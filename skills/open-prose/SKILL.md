@@ -50,33 +50,36 @@ Activate this skill when the user:
 
 ## Telemetry
 
-OpenProse collects anonymous usage analytics to improve the language and tooling. This is opt-in and privacy-respecting.
+OpenProse collects anonymous usage analytics to improve the language and tooling. Telemetry is **enabled by default** and is privacy-respecting.
 
-### State Variable
+### State File
 
-The telemetry preference is stored in `.prose/state.json` as `OPENPROSE_TELEMETRY`:
+Session state is stored in `.prose/state.json`:
 
 ```json
 {
-  "OPENPROSE_TELEMETRY": "enabled"  // or "disabled"
+  "OPENPROSE_TELEMETRY": "enabled",
+  "SESSION_ID": "prose-1704326400000-a7b3c9"
 }
 ```
 
-### First Boot Opt-In
+### Session ID (Critical)
 
-On first activation, if `OPENPROSE_TELEMETRY` is not set:
+**At the start of every `/prose-boot` session:**
 
-1. **Prompt the user** using `AskUserQuestion`:
+1. Read `.prose/state.json` (create if missing)
+2. If `SESSION_ID` exists and is recent (within last hour), reuse it
+3. Otherwise, generate a new one: `prose-{Date.now()}-{6 random alphanumeric chars}`
+4. Write the new `SESSION_ID` to `.prose/state.json` immediately
+5. Use this SAME `SESSION_ID` for ALL telemetry events in this session
 
-   > "OpenProse can send anonymous usage data to help improve the language. No code or personal info is collected—just feature usage patterns. Enable telemetry?"
+This ensures all events from one user session can be correlated.
 
-   | Option | Description |
-   |--------|-------------|
-   | "Yes, enable" | Help improve OpenProse with anonymous data |
-   | "No thanks" | Disable telemetry |
+### Telemetry Default
 
-2. **Store the choice** in `.prose/state.json`
-3. **Continue** to normal boot flow
+Telemetry is **enabled by default**. Do NOT ask users about telemetry during onboarding - this creates friction. Users can disable it anytime by saying "disable OpenProse telemetry" or editing `.prose/state.json`.
+
+If `OPENPROSE_TELEMETRY` is missing from state.json, treat it as `"enabled"`.
 
 ### Sending Analytics
 
@@ -91,7 +94,7 @@ When telemetry is enabled, send events to the analytics API after key operations
 - `run` - When executing a .prose program
 - `poll` - Interactive mode questions (question, options, selected answer)
 
-**Session Hash:** Generate a unique session identifier for each OpenProse session. Use the format `prose-{timestamp}-{random}` where timestamp is Unix milliseconds and random is 6 alphanumeric characters. Store this in memory and reuse it for all events in the same session.
+**Reading Session ID:** Before sending any telemetry, read the `SESSION_ID` from `.prose/state.json`. Use this same ID for all events.
 
 **Example (via curl in Bash tool):**
 
@@ -161,6 +164,18 @@ The boot menu onboards new users and re-engages returning users. It guides them 
 | User mentions OpenProse without clear intent | Run boot menu |
 | User asks "how does this work", "get started", "intro" | Run boot menu |
 | User has a specific file to run or task to do | **Skip** boot menu, execute directly |
+
+### Boot Flow: All Users
+
+**Step 0: Initialize Session (Always First)**
+
+Before any user interaction:
+
+1. Check if `.prose/` directory exists, create if not
+2. Read `.prose/state.json` (create with defaults if missing)
+3. Generate or reuse `SESSION_ID` (see Telemetry section)
+4. Send `boot` telemetry event with the session ID
+5. Check if `.prose` files exist in current directory
 
 ### Boot Flow: New Users
 
