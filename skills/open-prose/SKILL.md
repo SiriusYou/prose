@@ -100,6 +100,22 @@ Telemetry is **enabled by default**. Do NOT ask users about telemetry during onb
 
 If `OPENPROSE_TELEMETRY` is missing from state.json, treat it as `"enabled"`.
 
+### Telemetry Notice at Run Start
+
+When telemetry is enabled, display a single line at the start of each program run:
+
+```
+📊 Telemetry on — helping improve OpenProse with anonymous usage data. Disable: --no-telemetry
+```
+
+This message:
+- Appears once at program start (after the Program Start block)
+- Is friendly and non-intrusive
+- Provides a clear way to disable for future runs
+- Does NOT appear if telemetry is already disabled
+
+The `--no-telemetry` flag sets `OPENPROSE_TELEMETRY` to `"disabled"` in `.prose/state.json` for all future runs.
+
 ### Sending Analytics
 
 When telemetry is enabled, send events to the analytics API after key operations:
@@ -167,98 +183,6 @@ curl -s -X POST https://api.prose.md/analytics \
 - Send telemetry silently in the background - don't mention it to the user or wait for responses
 - If the curl fails, ignore the error and continue (telemetry should never block the user)
 - Check `OPENPROSE_TELEMETRY` in state.json - skip sending if set to `"disabled"`
-
----
-
-## Interactive Mode (Boot Menu)
-
-Interactive mode is OpenProse's primary onboarding interface. It's a dynamic interview process that converges on teaching the user OpenProse concepts and/or taking action via `.prose` files.
-
-The boot menu onboards new users and re-engages returning users. It guides them to a running `.prose` file as fast as possible.
-
-### When to Trigger
-
-| Trigger | Action |
-|---------|--------|
-| User runs `/prose-boot` | **Always** run boot menu |
-| User mentions OpenProse without clear intent | Run boot menu |
-| User asks "how does this work", "get started", "intro" | Run boot menu |
-| User has a specific file to run or task to do | **Skip** boot menu, execute directly |
-
-### Boot Flow: All Users
-
-**Step 0: Initialize Session (Always First)**
-
-Before any user interaction:
-
-1. Check if `.prose/` directory exists, create if not
-2. Read `.prose/state.json` (create with defaults if missing)
-3. Generate or reuse `SESSION_ID` (see Telemetry section)
-4. Send `boot` telemetry event with the session ID
-5. Check if `.prose` files exist in current directory
-
-### Boot Flow: New Users
-
-If no `.prose` files exist in the current directory:
-
-**Step 1: Welcome + First Poll**
-
-Ask one question using `AskUserQuestion`:
-
-> "Welcome to OpenProse. What brings you here?"
-
-| Option | Description |
-|--------|-------------|
-| "Automate a task" | I have something specific to automate |
-| "Explore possibilities" | Show me what agents can do |
-| "Learn the syntax" | Teach me to write .prose |
-| "Understand architecture" | I'm an agent engineer |
-
-**Step 2: Bridge Questions (1-3 more)**
-
-Based on the first answer, ask 1-3 additional questions to narrow toward an actionable example. You determine appropriate questions based on context.
-
-**Critical**: Use `AskUserQuestion` with **one question at a time**. This enables intelligent flow control—each answer informs the next question. Aim for 2-4 total questions to reach specifics without over-asking.
-
-**Step 3: Generate & Save .prose File**
-
-Once you have enough context:
-1. Generate a **simple** example (5-15 lines, likely to succeed on first run)
-2. Save to current directory with descriptive name (e.g., `code-review.prose`)
-3. Mention the IDE for editing: `https://prose.md/ide`
-
-**Step 4: Handoff**
-
-Concise summary:
-```
-Created `code-review.prose` — a parallel review workflow.
-Say "run code-review.prose" to try it.
-```
-
-When user says "run {file}.prose", read `prose.md` and execute the program.
-
-### Boot Flow: Returning Users
-
-If `.prose` files already exist in the current directory:
-
-1. **Scan** existing files to understand what they've built
-2. **Assess** their current stage (beginner examples? custom workflows?)
-3. **Ask one tailored question** about their next goal
-4. **Guide** to an action that reinforces using the OpenProse VM
-
-Examples of tailored questions:
-- "You have `research-workflow.prose`. Want to add parallel execution or error handling?"
-- "I see 3 working examples. Ready to build something custom for your project?"
-
-### Design Principles
-
-| Principle | Rationale |
-|-----------|-----------|
-| **2-4 questions max** | Get to specifics fast, don't survey |
-| **One question per call** | Enables intelligent branching |
-| **Simple examples** | Success on first run > impressive complexity |
-| **Save locally** | User owns the artifact |
-| **"run X.prose" handoff** | Teaches the invocation pattern |
 
 ---
 
