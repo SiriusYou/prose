@@ -2,11 +2,14 @@
 role: execution-semantics
 summary: |
   How to execute OpenProse programs. You embody the OpenProse VM—a virtual machine that
-  spawns sessions via the Task tool, manages state in working memory, and coordinates
-  parallel execution. Read this file to run .prose programs.
+  spawns sessions via the Task tool, manages state, and coordinates parallel execution.
+  Read this file to run .prose programs.
 see-also:
   - SKILL.md: Activation triggers, onboarding, telemetry
-  - docs.md: Full syntax grammar, validation rules, compilation
+  - compiler.md: Full syntax grammar, validation rules, compilation
+  - primitives/memory.md: In-context state management (narration protocol)
+  - primitives/disk.md: File-system state management
+  - primitives/session.md: Session context and compaction guidelines
 ---
 
 # OpenProse VM
@@ -26,11 +29,11 @@ A traditional VM has concrete components. The OpenProse VM has analogous structu
 | Traditional VM | OpenProse VM | Substrate |
 |----------------|--------------|-----------|
 | Instructions | `.prose` statements | Executed via tool calls (Task) |
-| Program counter | Execution position | Tracked via narration (`📍 Statement 3 of 7`) |
+| Program counter | Execution position | Tracked in `state.md` or narration |
 | Working memory | Conversation history | The context window holds ephemeral state |
 | Persistent storage | `.prose/` directory | Files hold durable state across sessions |
-| Call stack | Block invocation chain | Tracked via narration protocol |
-| Registers/variables | Named bindings | `📦 let research = <value>` |
+| Call stack | Block invocation chain | Tracked via state.md or narration protocol |
+| Registers/variables | Named bindings | Stored in `bindings/{name}.md` |
 | I/O | Tool calls and results | Task spawns sessions, returns outputs |
 
 ### What Makes It Real
@@ -47,13 +50,13 @@ When you execute a `.prose` program, you ARE the virtual machine. This is not a 
 |-----|--------|
 | Your conversation history | The VM's working memory |
 | Your tool calls (Task) | The VM's instruction execution |
-| Your narration (emoji markers) | The VM's execution trace |
+| Your state tracking | The VM's execution trace |
 | Your judgment on `**...**` | The VM's intelligent evaluation |
 
 **What this means in practice:**
 - You don't *simulate* execution—you *perform* it
 - Each `session` spawns a real subagent via the Task tool
-- Your state persists in what you say (narration protocol)
+- Your state persists in files (`.prose/runs/`) or conversation (narration protocol)
 - You follow the program structure strictly, but apply intelligence where marked
 
 ### The VM as Intelligent Container
@@ -67,6 +70,7 @@ Traditional dependency injection containers wire up components from configuratio
 | `output findings = ...` | Mark value as output, return to caller on completion |
 | `agent researcher:` | Register this agent template for later use |
 | `session: researcher` | Resolve the agent, merge properties, spawn the session |
+| `resume: captain` | Load agent memory, spawn session with memory context |
 | `context: { a, b }` | Wire the outputs of `a` and `b` into this session's input |
 | `parallel:` branches | Coordinate concurrent execution, collect results |
 | `block review(topic):` | Store this reusable component, invoke when called |
@@ -94,15 +98,126 @@ The OpenProse VM follows the program structure **strictly** but uses **intellige
 
 ---
 
+## Directory Structure
+
+All execution state lives in `.prose/`:
+
+```
+.prose/
+├── .env                              # Config/telemetry (simple key=value format)
+├── runs/
+│   └── {YYYYMMDD}-{HHMMSS}-{random}/
+│       ├── program.prose             # Copy of running program
+│       ├── state.md                  # Execution state with code snippets
+│       ├── bindings/
+│       │   └── {name}.md             # All named values (input/output/let/const)
+│       ├── imports/
+│       │   └── {handle}--{slug}/     # Nested program executions (same structure recursively)
+│       └── agents/
+│           └── {name}/
+│               ├── memory.md         # Agent's current state
+│               ├── {name}-001.md     # Historical segments (flattened)
+│               ├── {name}-002.md
+│               └── ...
+└── agents/                           # Project-scoped agent memory
+    └── {name}/
+        ├── memory.md
+        ├── {name}-001.md
+        └── ...
+```
+
+### Run ID Format
+
+Format: `{YYYYMMDD}-{HHMMSS}-{random6}`
+
+Example: `20260115-143052-a7b3c9`
+
+No "run-" prefix needed—the directory name makes context obvious.
+
+### Segment Numbering
+
+Segments use 3-digit zero-padded numbers: `captain-001.md`, `captain-002.md`, etc.
+
+If a program exceeds 999 segments, extend to 4 digits: `captain-1000.md`.
+
+---
+
+## State Management
+
+OpenProse supports two state management systems. See the primitives files for detailed documentation:
+
+- **`primitives/memory.md`** — In-context state using the narration protocol (emoji markers)
+- **`primitives/disk.md`** — File-system state using the directory structure above
+
+### Who Writes What
+
+| File | Written By |
+|------|------------|
+| `state.md` | VM only |
+| `bindings/{name}.md` | Subagent |
+| `agents/{name}/memory.md` | Persistent agent |
+| `agents/{name}/{name}-NNN.md` | Persistent agent |
+
+The VM orchestrates; subagents write their own outputs directly to the filesystem.
+
+### Subagent Output Writing
+
+When spawning a session, the VM tells the subagent where to write its output:
+
+```
+When you complete this task, write your output to:
+  .prose/runs/20260115-143052-a7b3c9/bindings/research.md
+
+Format:
+# research
+
+kind: let
+
+source:
+```prose
+let research = session: researcher
+  prompt: "Research AI safety"
+```
+
+---
+
+[Your output here]
+```
+
+For persistent agents with `resume:`:
+
+```
+Your memory is at:
+  .prose/runs/20260115-143052-a7b3c9/agents/captain/memory.md
+
+Read it first to understand your prior context. When done, update it
+with your compacted state following the guidelines in primitives/session.md.
+```
+
+The agent:
+1. Reads its memory file (for `resume:`)
+2. Processes the task with memory + task context
+3. Writes updated memory directly to the file
+4. Writes any output bindings to their paths
+
+The VM:
+1. Confirms files were written
+2. Updates `state.md` with new position/status
+3. Continues execution
+4. Does NOT do compaction—the agent did it
+
+---
+
 ## Syntax Grammar (Condensed)
 
 ```
 program     := statement*
 
-statement   := useStatement | inputDecl | agentDef | session | letBinding
-             | constBinding | assignment | outputBinding | parallelBlock
-             | repeatBlock | forEachBlock | loopBlock | tryBlock | choiceBlock
-             | ifStatement | doBlock | blockDef | throwStatement | comment
+statement   := useStatement | inputDecl | agentDef | session | resumeStmt
+             | letBinding | constBinding | assignment | outputBinding
+             | parallelBlock | repeatBlock | forEachBlock | loopBlock
+             | tryBlock | choiceBlock | ifStatement | doBlock | blockDef
+             | throwStatement | comment
 
 # Program Composition
 useStatement := "use" STRING ("as" NAME)?
@@ -114,16 +229,20 @@ agentDef    := "agent" NAME ":" INDENT property* DEDENT
 blockDef    := "block" NAME params? ":" INDENT statement* DEDENT
 params      := "(" NAME ("," NAME)* ")"
 
-# Sessions
-session     := "session" (STRING | ":" NAME) properties?
-properties  := INDENT property* DEDENT
+# Agent Properties
 property    := "model:" ("sonnet" | "opus" | "haiku")
              | "prompt:" STRING
+             | "persist:" ("true" | "project" | STRING)
              | "context:" (NAME | "[" NAME* "]" | "{" NAME* "}")
              | "retry:" NUMBER
              | "backoff:" ("none" | "linear" | "exponential")
              | "skills:" "[" STRING* "]"
              | "permissions:" INDENT permission* DEDENT
+
+# Sessions
+session     := "session" (STRING | ":" NAME) properties?
+resumeStmt  := "resume" ":" NAME properties?
+properties  := INDENT property* DEDENT
 
 # Bindings
 letBinding  := "let" NAME "=" expression
@@ -175,6 +294,75 @@ comment     := "#" TEXT
 
 ---
 
+## Persistent Agents
+
+Agents can maintain memory across invocations using the `persist` property.
+
+### Declaration
+
+```prose
+# Stateless agent (default, unchanged)
+agent executor:
+  model: sonnet
+  prompt: "Execute tasks precisely"
+
+# Persistent agent (execution-scoped)
+agent captain:
+  model: opus
+  persist: true
+  prompt: "You coordinate and review, never implement directly"
+
+# Persistent agent (project-scoped)
+agent advisor:
+  model: opus
+  persist: project
+  prompt: "You provide architectural guidance"
+
+# Persistent agent (explicit path)
+agent shared:
+  model: opus
+  persist: ".prose/custom/shared-agent/"
+  prompt: "Shared across multiple programs"
+```
+
+### Invocation
+
+Two keywords distinguish fresh vs resumed invocations:
+
+```prose
+# First invocation OR re-initialize (starts fresh)
+session: captain
+  prompt: "Review the plan"
+  context: plan
+
+# Subsequent invocations (picks up memory)
+resume: captain
+  prompt: "Review step 1"
+  context: step1
+
+# Output capture works with both
+let review = resume: captain
+  prompt: "Review step 2"
+  context: step2
+```
+
+### Memory Semantics
+
+| Keyword | Memory Behavior |
+|---------|-----------------|
+| `session:` | Ignores existing memory, starts fresh |
+| `resume:` | Loads memory, continues with context |
+
+### Memory Scoping
+
+| Scope | Declaration | Path | Lifetime |
+|-------|-------------|------|----------|
+| Execution (default) | `persist: true` | `.prose/runs/{id}/agents/{name}/` | Dies with run |
+| Project | `persist: project` | `.prose/agents/{name}/` | Survives runs |
+| Custom | `persist: "path"` | Specified path | User-controlled |
+
+---
+
 ## Spawning Sessions
 
 Each `session` statement spawns a subagent using the **Task tool**:
@@ -212,6 +400,25 @@ Task({
   model: "opus"
 })
 ```
+
+### With Persistent Agent (resume)
+
+```prose
+agent captain:
+  model: opus
+  persist: true
+  prompt: "You coordinate and review"
+
+# First invocation
+session: captain
+  prompt: "Review the plan"
+
+# Subsequent invocation - loads memory
+resume: captain
+  prompt: "Review step 1"
+```
+
+For `resume:`, include the agent's memory file content and output path in the prompt.
 
 ### Property Precedence
 
@@ -414,38 +621,6 @@ For convenience, outputs can be destructured:
 let { findings, sources } = research(topic: "quantum computing")
 ```
 
-### Complete Composition Example
-
-A program that chains research and critique:
-
-```prose
-# research-loop.prose
-use "@alice/research" as research
-use "@alice/critique" as critic
-
-input topic: "What to investigate"
-
-# Iterate until quality is high
-let result
-loop until **critique score >= 8** (max: 3):
-  result = research(topic: topic)
-  review = critic(content: result.findings)
-
-output findings = result.findings
-output sources = result.sources
-output final_score = review.score
-```
-
-Invoking this composed program:
-
-```prose
-use "@bob/research-loop" as deep_research
-
-let final = deep_research(topic: "AI safety")
-session "Present findings"
-  context: final.findings
-```
-
 ### Import Execution Semantics
 
 When a program invokes an imported program:
@@ -456,6 +631,25 @@ When a program invokes an imported program:
 4. **Return**: Make outputs available to the caller as a result object
 
 The imported program runs in its own execution context but shares the same VM session.
+
+### Imports Recursive Structure
+
+Imported programs use the **same unified structure recursively**:
+
+```
+.prose/runs/{id}/imports/{handle}--{slug}/
+├── program.prose
+├── state.md
+├── bindings/
+│   └── {name}.md
+├── imports/                    # Nested imports go here
+│   └── {handle2}--{slug2}/
+│       └── ...
+└── agents/
+    └── {name}/
+```
+
+This allows unlimited nesting depth while maintaining consistent structure at every level.
 
 ---
 
@@ -537,508 +731,6 @@ On failure:
 1. Retry up to N times
 2. Apply backoff delay between attempts
 3. If all retries fail, propagate error
-
----
-
-## State Tracking
-
-OpenProse supports two state management systems. The OpenProse VM must track execution state to correctly manage variables, loops, parallel branches, and error handling.
-
-### State Categories
-
-| Category | What to Track | Example |
-|----------|---------------|---------|
-| **Import Registry** | Imported programs and aliases | `research: @alice/research` |
-| **Agent Registry** | All agent definitions | `researcher: {model: sonnet, prompt: "..."}` |
-| **Block Registry** | All block definitions (hoisted) | `review: {params: [topic], body: [...]}` |
-| **Input Bindings** | Inputs received from caller | `topic = "quantum computing"` |
-| **Output Bindings** | Outputs to return to caller | `findings = "Research shows..."` |
-| **Variable Bindings** | Name → value mapping | `research = "AI safety covers..."` |
-| **Variable Mutability** | Which are `let` vs `const` vs `output` | `research: let, findings: output` |
-| **Execution Position** | Current statement index | Statement 3 of 7 |
-| **Loop State** | Counter, max, condition | Iteration 2 of max 5 |
-| **Parallel State** | Branches, results, strategy | `{a: complete, b: pending}` |
-| **Error State** | Exception, retry count | Retry 2 of 3, error: "timeout" |
-| **Call Stack** | Nested block/program invocations | `[main, @alice/research, inner-loop]` |
-
----
-
-## State Management: In-Context (Default)
-
-The default approach uses **structured narration** in the conversation history. The OpenProse VM "thinks aloud" to persist state—what you say becomes what you remember.
-
-### The Narration Protocol
-
-Use emoji-prefixed markers for each state change:
-
-| Emoji | Category | Usage |
-|-------|----------|-------|
-| 📋 | Program | Start, end, definition collection |
-| 📍 | Position | Current statement being executed |
-| 📦 | Binding | Variable assignment or update |
-| 📥 | Input | Receiving inputs from caller |
-| 📤 | Output | Producing outputs for caller |
-| 🔗 | Import | Fetching and invoking imported programs |
-| ✅ | Success | Session or block completion |
-| ⚠️ | Error | Failures and exceptions |
-| 🔀 | Parallel | Entering, branch status, joining |
-| 🔄 | Loop | Iteration, condition evaluation |
-| 🔗 | Pipeline | Stage progress |
-| 🛡️ | Error handling | Try/catch/finally |
-| ➡️ | Flow | Condition evaluation results |
-
-### Narration Patterns by Construct
-
-#### Session Statements
-```
-📍 Executing: session "Research the topic"
-   [Task tool call]
-✅ Session complete: "Research found that..."
-📦 let research = <result>
-```
-
-#### Parallel Blocks
-```
-🔀 Entering parallel block (3 branches, strategy: all)
-   - security: pending
-   - perf: pending
-   - style: pending
-   [Multiple Task calls]
-🔀 Parallel complete:
-   - security = "No vulnerabilities found..."
-   - perf = "Performance is acceptable..."
-   - style = "Code follows conventions..."
-📦 security, perf, style bound
-```
-
-#### Loop Blocks
-```
-🔄 Starting loop until **task complete** (max: 5)
-
-🔄 Iteration 1 of max 5
-   📍 session "Work on task"
-   ✅ Session complete
-   🔄 Evaluating: **task complete**
-   ➡️ Not satisfied, continuing
-
-🔄 Iteration 2 of max 5
-   📍 session "Work on task"
-   ✅ Session complete
-   🔄 Evaluating: **task complete**
-   ➡️ Satisfied!
-
-🔄 Loop exited: condition satisfied at iteration 2
-```
-
-#### Error Handling
-```
-🛡️ Entering try block
-📍 session "Risky operation"
-⚠️ Session failed: connection timeout
-📦 err = {message: "connection timeout"}
-🛡️ Executing catch block
-📍 session "Handle error" with context: err
-✅ Recovery complete
-🛡️ Executing finally block
-📍 session "Cleanup"
-✅ Cleanup complete
-```
-
-#### Variable Bindings
-```
-📦 let research = "AI safety research covers..." (mutable)
-📦 const config = {model: "opus"} (immutable)
-📦 research = "Updated research..." (reassignment, was: "AI safety...")
-```
-
-#### Input/Output Bindings
-```
-📥 Inputs received:
-   topic = "quantum computing" (from caller)
-   depth = "deep" (from caller)
-
-📤 output findings = "Research shows..." (will return to caller)
-📤 output sources = ["arxiv:2401.1234", ...] (will return to caller)
-```
-
-#### Program Imports
-```
-🔗 Importing: @alice/research
-   Fetching from: https://p.prose.md/@alice/research
-   Inputs expected: [topic, depth]
-   Outputs provided: [findings, sources]
-   Registered as: research
-
-🔗 Invoking: research(topic: "quantum computing")
-   📥 Passing inputs:
-      topic = "quantum computing"
-
-   [... imported program execution ...]
-
-   📤 Received outputs:
-      findings = "Quantum computing uses..."
-      sources = ["arxiv:2401.1234"]
-
-🔗 Import complete: research
-📦 result = { findings: "...", sources: [...] }
-```
-
-### Context Serialization
-
-When passing context to sessions, format appropriately:
-
-| Context Size | Strategy |
-|--------------|----------|
-| < 2000 chars | Pass verbatim |
-| 2000-8000 chars | Summarize to key points |
-| > 8000 chars | Extract essentials only |
-
-**Format:**
-```
-Context provided:
----
-research: "Key findings about AI safety..."
-analysis: "Risk assessment shows..."
----
-```
-
-### Complete Execution Trace Example
-
-```prose
-agent researcher:
-  model: sonnet
-
-let research = session: researcher
-  prompt: "Research AI safety"
-
-parallel:
-  a = session "Analyze risk A"
-  b = session "Analyze risk B"
-
-loop until **analysis complete** (max: 3):
-  session "Synthesize"
-    context: { a, b, research }
-```
-
-**Narration:**
-```
-📋 Program Start
-   Collecting definitions...
-   - Agent: researcher (model: sonnet)
-
-📍 Statement 1: let research = session: researcher
-   Spawning with prompt: "Research AI safety"
-   Model: sonnet
-   [Task tool call]
-✅ Session complete: "AI safety research covers alignment..."
-📦 let research = <result>
-
-📍 Statement 2: parallel block
-🔀 Entering parallel (2 branches, strategy: all)
-   [Task: "Analyze risk A"] [Task: "Analyze risk B"]
-🔀 Parallel complete:
-   - a = "Risk A: potential misalignment..."
-   - b = "Risk B: robustness concerns..."
-📦 a, b bound
-
-📍 Statement 3: loop until **analysis complete** (max: 3)
-🔄 Starting loop
-
-🔄 Iteration 1 of max 3
-   📍 session "Synthesize" with context: {a, b, research}
-   [Task with serialized context]
-   ✅ Result: "Initial synthesis shows..."
-   🔄 Evaluating: **analysis complete**
-   ➡️ Not satisfied (synthesis is preliminary)
-
-🔄 Iteration 2 of max 3
-   📍 session "Synthesize" with context: {a, b, research}
-   [Task with serialized context]
-   ✅ Result: "Comprehensive analysis complete..."
-   🔄 Evaluating: **analysis complete**
-   ➡️ Satisfied!
-
-🔄 Loop exited: condition satisfied at iteration 2
-
-📋 Program Complete
-```
-
----
-
-## State Management: In-File
-
-For long-running programs, complex parallel execution, or resumable workflows, state can be persisted to the filesystem instead of relying solely on the conversation context.
-
-### Automatic State Mode Selection
-
-The OpenProse VM automatically chooses the appropriate state management mode at program start. This decision is based on program complexity:
-
-| Factor | In-Context | In-File |
-|--------|------------|---------|
-| Statement count | < 30 statements | ≥ 30 statements |
-| Parallel branches | < 5 concurrent | ≥ 5 concurrent |
-| Imported programs | 0-2 imports | ≥ 3 imports |
-| Nested depth | ≤ 2 levels | > 2 levels |
-| Expected duration | < 5 minutes | ≥ 5 minutes |
-
-The VM announces its choice at program start:
-
-```
-📋 Program Start
-   State mode: in-context (program is small, fits in context)
-
-   To use file-based state on next run, add: --state=file
-```
-
-Or for complex programs:
-
-```
-📋 Program Start
-   State mode: in-file (program has 47 statements, 3 imports)
-   State directory: .prose/execution/run-20260110-143052-a7b3c9/
-
-   To use in-context state on next run, add: --state=context
-```
-
-### Overriding State Mode
-
-Users can override the automatic selection by passing a flag:
-
-- `--state=context` — Force in-context state (narration only)
-- `--state=file` — Force file-based state (persistent)
-
-The flag can be passed when invoking the program or specified in the program itself:
-
-```prose
-# Force file-based state for this program
-# state: file
-
-input topic: "What to research"
-# ... rest of program
-```
-
-### Directory Structure
-
-```
-.prose/
-├── execution/
-│   └── run-{YYYYMMDD}-{HHMMSS}-{random}/
-│       ├── program.prose          # Copy of running program
-│       ├── position.json          # Current statement index
-│       ├── inputs/
-│       │   ├── {name}.md          # Input values received
-│       │   └── manifest.json      # Input metadata
-│       ├── outputs/
-│       │   ├── {name}.md          # Output values produced
-│       │   └── manifest.json      # Output metadata
-│       ├── variables/
-│       │   ├── {name}.md          # Variable values
-│       │   └── manifest.json      # Metadata (type, mutability)
-│       ├── imports/
-│       │   └── {handle}--{slug}/  # Nested program executions
-│       │       ├── inputs/
-│       │       ├── outputs/
-│       │       ├── variables/
-│       │       └── execution.log
-│       ├── parallel/
-│       │   └── {block-id}/
-│       │       ├── {branch}.md    # Branch results
-│       │       └── status.json    # Branch status
-│       ├── loops/
-│       │   └── {loop-id}.json     # Iteration state
-│       └── execution.log          # Full trace
-└── checkpoints/
-    └── {name}.json                # Resumable snapshots
-```
-
-### Session ID Format
-
-Each execution generates a unique session ID:
-```
-run-20260103-143052-a7b3c9
-```
-Format: `run-{YYYYMMDD}-{HHMMSS}-{6-char-random}`
-
-### File Formats
-
-#### position.json
-```json
-{
-  "session_id": "run-20260103-143052-a7b3c9",
-  "statement_index": 5,
-  "total_statements": 12,
-  "started_at": "2026-01-03T14:30:52Z",
-  "last_updated": "2026-01-03T14:32:15Z"
-}
-```
-
-#### inputs/manifest.json
-```json
-{
-  "inputs": [
-    {"name": "topic", "file": "topic.md", "received_at": "2026-01-03T14:30:52Z"},
-    {"name": "depth", "file": "depth.md", "received_at": "2026-01-03T14:30:52Z"}
-  ]
-}
-```
-
-#### inputs/{name}.md
-```markdown
-# Input: topic
-
-**Received from:** caller
-**Received at:** Statement 0 (program start)
-
-## Value
-
-quantum computing
-```
-
-#### outputs/manifest.json
-```json
-{
-  "outputs": [
-    {"name": "findings", "file": "findings.md", "bound_at": "Statement 5"},
-    {"name": "sources", "file": "sources.md", "bound_at": "Statement 6"}
-  ]
-}
-```
-
-#### outputs/{name}.md
-```markdown
-# Output: findings
-
-**Bound at:** Statement 5
-**Will return to:** caller
-
-## Value
-
-Quantum computing leverages quantum mechanical phenomena such as
-superposition and entanglement to perform computations. Key findings
-include...
-
-[Full value preserved]
-```
-
-#### variables/manifest.json
-```json
-{
-  "variables": [
-    {"name": "research", "type": "let", "file": "research.md"},
-    {"name": "config", "type": "const", "file": "config.md"}
-  ]
-}
-```
-
-#### variables/{name}.md
-```markdown
-# Variable: research
-
-**Type:** let (mutable)
-**Bound at:** Statement 3
-**Last updated:** Statement 7
-
-## Value
-
-AI safety research covers several key areas including alignment,
-robustness, and interpretability. The field has grown significantly
-since 2020 with major contributions from...
-
-[Full value preserved]
-```
-
-#### parallel/{block-id}/status.json
-```json
-{
-  "block_id": "parallel_stmt_5",
-  "strategy": "all",
-  "on_fail": "fail-fast",
-  "branches": [
-    {"name": "security", "status": "complete", "file": "security.md"},
-    {"name": "perf", "status": "complete", "file": "perf.md"},
-    {"name": "style", "status": "pending", "file": null}
-  ]
-}
-```
-
-#### loops/{loop-id}.json
-```json
-{
-  "loop_id": "loop_stmt_8",
-  "type": "until",
-  "condition": "**analysis complete**",
-  "max": 5,
-  "current_iteration": 2,
-  "condition_history": [
-    {"iteration": 1, "result": false, "reason": "synthesis preliminary"},
-    {"iteration": 2, "result": true, "reason": "comprehensive analysis"}
-  ]
-}
-```
-
-### In-File Execution Protocol
-
-When the VM selects (or is configured for) in-file state management:
-
-1. **Program Start**
-   ```
-   📋 Program Start
-      State mode: in-file (program has 47 statements, 3 imports)
-      State directory: .prose/execution/run-20260103-143052-a7b3c9/
-
-      To use in-context state on next run, add: --state=context
-   ```
-
-2. **After Each Statement**
-   - Update `position.json`
-   - Write/update affected variable files
-   - Append to `execution.log`
-
-3. **Variable Binding**
-   ```
-   📦 let research = <value>
-      Written to: .prose/execution/.../variables/research.md
-   ```
-
-4. **Parallel Execution**
-   - Create `parallel/{block-id}/` directory
-   - Write each branch result as it completes
-   - Update `status.json` after each branch
-
-5. **Loop Execution**
-   - Create `loops/{loop-id}.json` at loop start
-   - Update after each iteration with condition result
-
-6. **Checkpointing**
-   When user requests or at natural break points:
-   ```
-   💾 Checkpoint saved: .prose/checkpoints/before-deploy.json
-   ```
-
-### Resuming Execution
-
-If execution is interrupted, resume with:
-```
-"Resume the OpenProse program from the last checkpoint"
-```
-
-The OpenProse VM:
-1. Reads `.prose/execution/run-.../position.json`
-2. Loads variables from `variables/`
-3. Continues from `statement_index`
-
-### Hybrid Approach
-
-For most programs, use a hybrid:
-- **In-context** for small variables and recent state
-- **In-file** for large values (> 5000 chars) and checkpoints
-
-```
-📦 let summary = <short value, kept in-context>
-📦 let full_report = <large value>
-   Written to: .prose/execution/.../variables/full_report.md
-   In-context: [reference to file]
-```
 
 ---
 
@@ -1140,6 +832,7 @@ function execute(program, inputs?):
   4. Collect all block definitions
   5. For each statement in order:
      - If session: spawn via Task, await result
+     - If resume: load memory, spawn via Task, await result
      - If let/const: execute RHS, bind result
      - If output: execute RHS, bind result, register as output
      - If program call: invoke imported program with inputs, receive outputs
@@ -1199,12 +892,13 @@ The OpenProse VM:
 4. **Collects** definitions (agents, blocks)
 5. **Executes** statements sequentially
 6. **Spawns** sessions via Task tool
-7. **Invokes** imported programs with inputs, receives outputs
-8. **Coordinates** parallel execution
-9. **Evaluates** discretion conditions intelligently
-10. **Manages** context flow between sessions
-11. **Handles** errors with try/catch/retry
-12. **Tracks** state in working memory (or files)
-13. **Returns** output bindings to caller
+7. **Resumes** persistent agents with memory
+8. **Invokes** imported programs with inputs, receives outputs
+9. **Coordinates** parallel execution
+10. **Evaluates** discretion conditions intelligently
+11. **Manages** context flow between sessions
+12. **Handles** errors with try/catch/retry
+13. **Tracks** state in files (`.prose/runs/`) or conversation
+14. **Returns** output bindings to caller
 
 The language is self-evident by design. When in doubt about syntax, interpret it as natural language structured for unambiguous control flow.

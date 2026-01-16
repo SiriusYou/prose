@@ -7,6 +7,8 @@ summary: |
 see-also:
   - SKILL.md: Activation triggers, onboarding, telemetry
   - prose.md: Execution semantics, how to run programs
+  - primitives/memory.md: In-context state management
+  - primitives/disk.md: File-system state management
 ---
 
 # OpenProse Language Reference
@@ -140,6 +142,8 @@ The following features are implemented:
 | Block invocation args  | Implemented | `do name(arg)` passing arguments               |
 | Choice blocks          | Implemented | `choice **criteria**: option "label":`         |
 | If/elif/else           | Implemented | `if **condition**:` conditional branching      |
+| Persistent agents      | Implemented | `persist: true` or `persist: project`          |
+| Resume statement       | Implemented | `resume: agent` to continue with memory        |
 
 ---
 
@@ -395,12 +399,43 @@ agent name:
 
 ### Properties
 
-| Property      | Type       | Values                    | Description                         |
-| ------------- | ---------- | ------------------------- | ----------------------------------- |
-| `model`       | identifier | `sonnet`, `opus`, `haiku` | The Claude model to use             |
-| `prompt`      | string     | Any string                | System prompt/context for the agent |
-| `skills`      | array      | String array              | Skills assigned to this agent       |
-| `permissions` | block      | Permission rules          | Access control for the agent        |
+| Property      | Type       | Values                         | Description                           |
+| ------------- | ---------- | ------------------------------ | ------------------------------------- |
+| `model`       | identifier | `sonnet`, `opus`, `haiku`      | The Claude model to use               |
+| `prompt`      | string     | Any string                     | System prompt/context for the agent   |
+| `persist`     | value      | `true`, `project`, or STRING   | Enable persistent memory for agent    |
+| `skills`      | array      | String array                   | Skills assigned to this agent         |
+| `permissions` | block      | Permission rules               | Access control for the agent          |
+
+### Persist Property
+
+The `persist` property enables agents to maintain memory across invocations:
+
+```prose
+# Execution-scoped persistence (memory dies with run)
+agent captain:
+  model: opus
+  persist: true
+  prompt: "You coordinate and review"
+
+# Project-scoped persistence (memory survives across runs)
+agent advisor:
+  model: opus
+  persist: project
+  prompt: "You provide architectural guidance"
+
+# Custom path persistence
+agent shared:
+  model: opus
+  persist: ".prose/custom/shared-agent/"
+  prompt: "Shared across programs"
+```
+
+| Value | Memory Location | Lifetime |
+|-------|-----------------|----------|
+| `true` | `.prose/runs/{id}/agents/{name}/` | Dies with execution |
+| `project` | `.prose/agents/{name}/` | Survives executions |
+| STRING | Specified path | User-controlled |
 
 ### Skills Property
 
@@ -678,6 +713,58 @@ session: researcher
 
 ---
 
+## Resume Statement
+
+The `resume` statement continues a persistent agent with its accumulated memory.
+
+### Syntax
+
+```prose
+resume: agentName
+  prompt: "Continue from where we left off"
+```
+
+### Semantics
+
+| Keyword | Behavior |
+|---------|----------|
+| `session:` | Ignores existing memory, starts fresh |
+| `resume:` | Loads memory, continues with context |
+
+### Examples
+
+```prose
+agent captain:
+  model: opus
+  persist: true
+  prompt: "You coordinate and review"
+
+# First invocation - creates memory
+session: captain
+  prompt: "Review the plan"
+  context: plan
+
+# Later invocation - loads memory
+resume: captain
+  prompt: "Review step 1 of the plan"
+  context: step1
+
+# Output capture works with resume
+let review = resume: captain
+  prompt: "Final review of all steps"
+```
+
+### Validation Rules
+
+| Check | Severity | Message |
+|-------|----------|---------|
+| `resume:` on non-persistent agent | Error | Agent must have `persist:` property to use `resume:` |
+| `resume:` with no existing memory | Error | No memory file exists for agent; use `session:` for first invocation |
+| `session:` on persistent agent with memory | Warning | Will ignore existing memory; use `resume:` to continue |
+| Undefined agent reference | Error | Agent not defined |
+
+---
+
 ## Variables & Context
 
 Variables allow you to capture the results of sessions and pass them as context to subsequent sessions.
@@ -796,6 +883,30 @@ const report = session: writer
 | Variable conflicts with agent   | Error    | Variable name conflicts with agent name            |
 | Undefined context variable      | Error    | Undefined variable in context                      |
 | Non-identifier in context array | Error    | Context array elements must be variable references |
+
+### Flat Namespace Requirement
+
+All variable names must be **unique within a program**. No shadowing is allowed across scopes.
+
+**This is a compile error:**
+
+```prose
+let result = session "Outer task"
+
+for item in items:
+  let result = session "Inner task"   # Error: 'result' already defined
+    context: item
+```
+
+**Why this constraint:** Since bindings are stored as `bindings/{name}.md`, two variables with the same name would collide on the filesystem. Rather than introduce complex scoping rules, we enforce uniqueness.
+
+**Collision scenarios this prevents:**
+1. Variable inside loop shadows variable outside loop
+2. Variables in different `if`/`elif`/`else` branches with same name
+3. Block parameters shadowing outer variables
+4. Parallel branches reusing outer variable names
+
+**Exception:** Imported programs run in isolated namespaces. A variable `result` in the main program does not collide with `result` in an imported program (they write to different `imports/{handle}--{slug}/bindings/` directories).
 
 ---
 
@@ -2404,6 +2515,9 @@ The validator checks programs for errors and warnings before execution.
 | E014 | Skill name must be a string         |
 | E015 | Permissions must be a block         |
 | E016 | Permission pattern must be a string |
+| E017 | `resume:` requires persistent agent |
+| E018 | `resume:` with no existing memory   |
+| E019 | Duplicate variable name (flat namespace) |
 
 ### Warnings (Non-blocking)
 
@@ -2419,6 +2533,7 @@ The validator checks programs for errors and warnings before execution.
 | W008 | Unknown permission type                  |
 | W009 | Unknown permission value                 |
 | W010 | Empty skills array                       |
+| W011 | `session:` on persistent agent with existing memory |
 
 ### Error Message Format
 
@@ -2583,11 +2698,16 @@ All core features through Tier 12 have been implemented. Potential future enhanc
 program     → statement* EOF
 statement   → agentDef | blockDef | parallelBlock | repeatBlock | forEachBlock
             | loopBlock | tryBlock | choiceBlock | ifStatement | session
-            | doBlock | arrowExpr | letBinding | constBinding | assignment
-            | throwStatement | comment
+            | resumeStmt | doBlock | arrowExpr | letBinding | constBinding
+            | assignment | throwStatement | comment
 
 # Definitions
-agentDef    → "agent" IDENTIFIER ":" NEWLINE INDENT property* DEDENT
+agentDef    → "agent" IDENTIFIER ":" NEWLINE INDENT agentProperty* DEDENT
+agentProperty → "model:" ( "sonnet" | "opus" | "haiku" )
+              | "prompt:" string
+              | "persist:" ( "true" | "project" | string )
+              | "skills:" array
+              | "permissions:" NEWLINE INDENT permission* DEDENT
 blockDef    → "block" IDENTIFIER params? ":" NEWLINE INDENT statement* DEDENT
 params      → "(" IDENTIFIER ( "," IDENTIFIER )* ")"
 
@@ -2625,7 +2745,13 @@ arrowExpr   → session "->" session ( "->" session )*
 
 # Sessions
 session     → "session" ( string | ":" IDENTIFIER | IDENTIFIER ":" IDENTIFIER )
-              ( NEWLINE INDENT property* DEDENT )?
+              ( NEWLINE INDENT sessionProperty* DEDENT )?
+resumeStmt  → "resume" ":" IDENTIFIER ( NEWLINE INDENT sessionProperty* DEDENT )?
+sessionProperty → "model:" ( "sonnet" | "opus" | "haiku" )
+                | "prompt:" string
+                | "context:" ( IDENTIFIER | array | objectContext )
+                | "retry:" NUMBER
+                | "backoff:" string
 
 # Bindings
 letBinding  → "let" IDENTIFIER "=" expression
@@ -2667,7 +2793,7 @@ escape      → "\\" | "\"" | "\n" | "\t"
 
 When a user invokes `/prose-compile` or asks you to compile a `.prose` file:
 
-1. **Read this document** (`docs.md`) fully to understand all syntax and validation rules
+1. **Read this document** (`compiler.md`) fully to understand all syntax and validation rules
 2. **Parse** the program according to the syntax grammar
 3. **Validate** syntax correctness, semantic validity, and self-evidence
 4. **Transform** to canonical form (expand syntax sugar, normalize structure)

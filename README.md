@@ -39,43 +39,12 @@ loop until **the draft meets publication standards** (max: 3):
     context: { research, competitive }
 ```
 
-## The Intelligent Inversion of Control
-
-Traditional orchestration requires explicit coordination code. OpenProse inverts this—you declare agents and control flow, and an AI session wires them up. **The session is the IoC container.**
-
-### 1. The Session as Runtime
-
-Other frameworks orchestrate agents from outside. OpenProse runs *inside* the agent session—the session itself is both interpreter and runtime. It doesn't just match names; it understands context and intent.
-
-### 2. The Fourth Wall (`**...**`)
-
-When you need AI judgment instead of strict execution, break out of structure:
-
-```prose
-loop until **the code is production ready**:
-  session "Review and improve"
-```
-
-The `**...**` syntax lets you speak directly to the OpenProse VM. It evaluates this semantically—deciding what "production ready" means based on context.
-
-### 3. Open Standard, Zero Lock-in
-
-OpenProse runs on any **Prose Complete** system—a model + harness combination capable of inducing the VM. Currently: Claude Code + Opus, OpenCode + Opus, Amp + Opus. It's not a library you're locked into—it's a language specification.
-
-Switch platforms anytime. Your `.prose` files work everywhere.
-
-### 4. Structure + Flexibility
-
-**Why not just plain English?** You can—that's what `**...**` is for. But complex workflows need unambiguous structure for control flow. The AI shouldn't have to guess whether you want sequential or parallel execution.
-
-**Why not rigid frameworks?** They're inflexible. OpenProse gives you structure where it matters (control flow, agent definitions) and natural language where you want flexibility (conditions, context passing).
-
 ## Install
 
 ### Claude Code
 
 ```bash
-claude plugin marketplace add https://github.com/openprose/prose.git
+claude plugin marketplace add openprose/prose
 claude plugin install open-prose@prose
 ```
 
@@ -107,6 +76,63 @@ Then launch Amp and try:
 ```
 
 > **By installing, you agree to the [Privacy Policy](PRIVACY.md) and [Terms of Service](TERMS.md).**
+
+## The Intelligent Inversion of Control
+
+Traditional orchestration requires explicit coordination code. OpenProse inverts this—you declare agents and control flow, and an AI session wires them up. **The session is the IoC container.**
+
+### 1. The Session as Runtime
+
+Other frameworks orchestrate agents from outside. OpenProse runs *inside* the agent session—the session itself is both interpreter and runtime. It doesn't just match names; it understands context and intent.
+
+### 2. The Fourth Wall (`**...**`)
+
+When you need AI judgment instead of strict execution, break out of structure:
+
+```prose
+loop until **the code is production ready**:
+  session "Review and improve"
+```
+
+The `**...**` syntax lets you speak directly to the OpenProse VM. It evaluates this semantically—deciding what "production ready" means based on context.
+
+### 3. Open Standard, Zero Lock-in
+
+OpenProse runs on any **Prose Complete** system—a model + harness combination capable of inducing the VM. Currently: Claude Code + Opus, OpenCode + Opus, Amp + Opus. It's not a library you're locked into—it's a language specification.
+
+Switch platforms anytime. Your `.prose` files work everywhere.
+
+### 4. Structure + Flexibility
+
+**Why not just plain English?** You can—that's what `**...**` is for. But complex workflows need unambiguous structure for control flow. The AI shouldn't have to guess whether you want sequential or parallel execution.
+
+**Why not rigid frameworks?** They're inflexible. OpenProse gives you structure where it matters (control flow, agent definitions) and natural language where you want flexibility (conditions, context passing).
+
+## Update
+
+### Claude Code
+
+Enable auto-updates (recommended):
+```
+/plugin → Marketplaces → prose → Enable auto-update
+```
+
+Or update manually:
+```bash
+claude plugin update open-prose@prose
+```
+
+### OpenCode
+
+```bash
+cd ~/.config/opencode/skill/open-prose && git pull
+```
+
+### Amp
+
+```bash
+cd ~/.config/agents/skills/open-prose && git pull
+```
 
 ## Language Features
 
@@ -189,7 +215,7 @@ OpenProse is in **beta**. This means:
 - **Telemetry is on by default** — We collect anonymous usage data to improve the project. See our [Privacy Policy](PRIVACY.md) for details and how to opt out.
 - **Expect bugs** — The software may behave unexpectedly. Please report issues at [github.com/openprose/prose/issues](https://github.com/openprose/prose/issues).
 - **Not for production** — Do not use OpenProse for critical or production workflows yet.
-- **We want feedback** — Your input shapes the project. Open issues, suggest features, report problems.
+- **We want feedback** — Your input shapes the project. Open issues, suggest features, report problems. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ### Your Responsibility
 
