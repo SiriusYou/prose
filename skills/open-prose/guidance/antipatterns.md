@@ -115,6 +115,39 @@ let report = session "Report"
   context: recommendations
 ```
 
+#### parallel-then-synthesize
+
+Spawning parallel agents for related analytical work, then synthesizing, when a single focused agent could do the entire job more efficiently.
+
+```prose
+# Antipattern: Parallel investigation + synthesis
+parallel:
+  code = session "Analyze code path"
+  logs = session "Analyze logs"
+  context = session "Analyze execution context"
+
+synthesis = session "Synthesize all findings"
+  context: { code, logs, context }
+# 4 LLM calls, coordination overhead, fragmented context
+```
+
+**Why it's bad**: For related analysis that feeds into one conclusion, the coordination overhead and context fragmentation often outweigh parallelism benefits. Each parallel agent sees only part of the picture.
+
+**Fix**: Use a single focused agent with multi-step instructions:
+
+```prose
+# Good: Single comprehensive investigator
+diagnosis = session "Investigate the error"
+  prompt: """Analyze comprehensively:
+  1. Check the code path that produced the error
+  2. Examine logs for timing and state
+  3. Review execution context
+  Synthesize into a unified diagnosis."""
+# 1 LLM call, full context, no coordination
+```
+
+**When parallel IS right**: When analyses are truly independent (security vs performance), when you want diverse perspectives that shouldn't influence each other, or when the work is so large it genuinely benefits from division.
+
 #### copy-paste-workflows
 
 Duplicating session sequences instead of using blocks. Leads to inconsistent changes and maintenance burden.
@@ -764,6 +797,72 @@ if **config file exists**:
   session "Load configuration from file"
 else:
   session "Use default configuration"
+```
+
+#### excessive-user-checkpoints
+
+Prompting the user for decisions that have obvious or predictable answers.
+
+```prose
+# Antipattern: Asking the obvious
+input "Blocking error detected. Investigate?"  # Always yes
+input "Diagnosis complete. Proceed to triage?"  # Always yes
+input "Tests pass. Deploy?"  # Almost always yes
+```
+
+**Why it's bad**: Each checkpoint is a round-trip waiting for user input. If the answer is predictable 90% of the time, you're adding latency for no value.
+
+**Fix**: Auto-proceed for obvious cases, only prompt when genuinely ambiguous:
+
+```prose
+# Good: Auto-proceed with escape hatches for edge cases
+if observation.blocking_error:
+  # Auto-investigate (don't ask - of course we investigate errors)
+  let diagnosis = do investigate(...)
+
+  # Only ask if genuinely ambiguous
+  if diagnosis.confidence == "low":
+    input "Low confidence diagnosis. Proceed anyway?"
+
+  # Auto-deploy if tests pass (but log for audit)
+  if fix.tests_pass:
+    do deploy(...)
+```
+
+**When checkpoints ARE right**: Irreversible actions (production deployments to critical systems), expensive operations (long-running jobs), or genuine decision points where the user's preference isn't predictable.
+
+#### fixed-observation-window
+
+Waiting for a predetermined duration when the signal arrived early.
+
+```prose
+# Antipattern: Fixed window regardless of findings
+loop 30 times (wait: 2s each):  # Always 60 seconds
+  resume: observer
+    prompt: "Keep watching the stream"
+# Runs all 30 iterations even if blocking error detected on iteration 1
+```
+
+**Why it's bad**: Wastes time when the answer is already known. If the observer detected a fatal error at +5 seconds, why wait another 55 seconds?
+
+**Fix**: Use signal-driven exit conditions:
+
+```prose
+# Good: Exit on significant signal
+loop until **blocking error OR completion** (max: 30):
+  resume: observer
+    prompt: "Watch the stream. Signal IMMEDIATELY on blocking errors."
+# Exits as soon as something significant happens
+```
+
+Or use `early_exit` if your runtime supports it:
+
+```prose
+# Good: Explicit early exit
+let observation = session: observer
+  prompt: "Monitor for errors. Signal immediately if found."
+  timeout: 120s
+  early_exit: **blocking_error detected**
 ```
 
 ---

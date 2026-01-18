@@ -106,6 +106,16 @@ These examples demonstrate workflows using OpenProse's full feature set.
 | `42-rlm-filter-recurse.prose` | Filter-then-process for needle-in-haystack tasks                    |
 | `43-rlm-pairwise.prose`       | O(n^2) pairwise aggregation for relationship mapping                |
 
+### Meta / Self-Hosting (44-48)
+
+| File                              | Description                                            |
+| --------------------------------- | ------------------------------------------------------ |
+| `44-run-endpoint-ux-test.prose`   | Concurrent agents testing the /run API endpoint        |
+| `45-plugin-release.prose`         | OpenProse plugin release workflow (this repo)          |
+| `46-workflow-crystallizer.prose`  | Reflective: observes thread, extracts workflow, writes .prose |
+| `47-language-self-improvement.prose` | Meta-level 2: analyzes .prose corpus to evolve the language itself |
+| `48-habit-miner.prose`            | Mines AI session logs for patterns, generates .prose automations |
+
 ## The Architect By Simulation Pattern
 
 The architect-by-simulation pattern is for designing systems by "implementing" them through reasoning. Instead of writing code, each phase produces specification documents that the next phase builds upon.

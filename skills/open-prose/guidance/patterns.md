@@ -208,6 +208,21 @@ Match model capability to task complexity:
 
 **Key insight:** Sonnet 4.5 excels at *orchestrating* agents and managing control flow—it's the ideal model for the OpenProse VM itself and for "captain" agents that coordinate work. Opus 4.5 should be reserved for agents doing genuinely difficult intellectual work. Haiku can handle simple tasks but should generally be avoided where quality matters.
 
+**Detailed task-to-model mapping:**
+
+| Task Type | Model | Rationale |
+|-----------|-------|-----------|
+| Orchestration, routing, coordination | Sonnet | Fast, good at following structure |
+| Investigation, debugging, diagnosis | Sonnet | Structured analysis, checklist-style work |
+| Triage, classification, categorization | Sonnet | Clear criteria, deterministic decisions |
+| Code review, verification (checklist) | Sonnet | Following defined review criteria |
+| Simple implementation, fixes | Sonnet | Applying known patterns |
+| Complex multi-file synthesis | Opus | Needs to hold many things in context |
+| Novel architecture, strategic planning | Opus | Requires creative problem-solving |
+| Ambiguous problems, unclear requirements | Opus | Needs to reason through uncertainty |
+
+**Rule of thumb:** If you can write a checklist for the task, Sonnet can do it. If the task requires genuine creativity or navigating ambiguity, use Opus.
+
 ```prose
 agent captain:
   model: sonnet  # Orchestration and coordination
@@ -263,6 +278,41 @@ loop until **solution found and verified** (max: 10):
 # Exits immediately when condition is met, not after max iterations
 ```
 
+#### early-signal-exit
+
+When observing or monitoring, exit as soon as you have a definitive answer—don't wait for the full observation window.
+
+```prose
+# Good: Exit on signal
+let observation = session: observer
+  prompt: "Watch the stream. Signal immediately if you detect a blocking error."
+  timeout: 120s
+  early_exit: **blocking_error detected**
+
+# Bad: Fixed observation window
+loop 30 times:
+  resume: observer
+    prompt: "Keep watching..."  # Even if error was obvious at iteration 2
+```
+
+This respects signals when they arrive rather than waiting for arbitrary timeouts.
+
+#### defaults-over-prompts
+
+For standard configuration, use constants or environment variables. Only prompt when genuinely variable.
+
+```prose
+# Good: Sensible defaults
+const API_URL = "https://api.example.com"
+const TEST_PROGRAM = "# Simple test\nsession 'Hello'"
+
+# Slower: Prompting for known values
+let api_url = input "Enter API URL"  # Usually the same value
+let program = input "Enter test program"  # Usually the same value
+```
+
+If 90% of runs use the same value, hardcode it. Let users override via CLI args if needed.
+
 #### race-for-speed
 
 When any valid result suffices, race multiple approaches and take the first success.
@@ -294,6 +344,32 @@ session "Analyze all files and return structured findings for each"
 ---
 
 ## Self-Improvement Patterns
+
+#### self-verification-in-prompt
+
+For tasks that would otherwise require a separate verifier, include verification as the final step in the prompt. This saves a round-trip while maintaining rigor.
+
+```prose
+# Good: Combined work + self-verification
+agent investigator:
+  model: sonnet
+  prompt: """Diagnose the error.
+  1. Examine code paths
+  2. Check logs and state
+  3. Form hypothesis
+  4. BEFORE OUTPUTTING: Verify your evidence supports your conclusion.
+
+  Output only if confident. If uncertain, state what's missing."""
+
+# Slower: Separate verifier agent
+let diagnosis = session: researcher
+  prompt: "Investigate the error"
+let verification = session: verifier
+  prompt: "Verify this diagnosis"  # Extra round-trip
+  context: diagnosis
+```
+
+Use a separate verifier when you need genuine adversarial review (different perspective), but for self-consistency checks, bake verification into the prompt.
 
 #### iterative-refinement
 
