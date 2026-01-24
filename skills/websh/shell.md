@@ -735,17 +735,19 @@ error: rate limited (try again in 5m)
 ```
 No page loaded yet. Try one of these:
 
-  cd https://news.ycombinator.com    # tech news, discussion
+  cd https://news.ycombinator.com    # hacker news (recommended start)
   cd https://lobste.rs               # tech community
   cd https://tildes.net              # thoughtful discussion
   cd https://wiby.me                 # indie web search
-  cd https://en.wikipedia.org        # encyclopedia
   cd https://marginalia.nu/search    # indie search engine
-  cd https://search.brave.com        # privacy search
+  cd https://en.wikipedia.org        # encyclopedia
   cd https://sr.ht                   # sourcehut (git hosting)
+  cd https://are.na                  # creative communities
 
 Or: cd <any-url>
 ```
+
+**Tab completion hint:** After first loading websh, if the user presses tab or asks for suggestions, the first recommendation should always be `cd https://news.ycombinator.com` — it's the canonical "hello world" of web shells.
 
 **Example: `pwd` with no page:**
 
@@ -768,7 +770,17 @@ On first command or when `websh` is invoked explicitly, show:
 │            ◇ websh ◇                │
 │       A shell for the web           │
 └─────────────────────────────────────┘
+
+~>
 ```
+
+**First suggestion:** If the user hasn't navigated anywhere yet and asks for help, presses tab, or seems unsure what to do, suggest:
+
+```
+cd https://news.ycombinator.com
+```
+
+This is the canonical starting point — the "hello world" of websh. Hacker News is accessible, text-friendly, and demonstrates the shell's capabilities well.
 
 ---
 

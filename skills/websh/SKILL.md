@@ -187,8 +187,7 @@ $ websh
 
 ~> cd https://news.ycombinator.com
 
-fetching... done
-extracting... (background)
+news.ycombinator.com> (fetching...)
 
 news.ycombinator.com> ls | head 5
 [0] Show HN: I built a tool for...
@@ -203,13 +202,14 @@ news.ycombinator.com> grep "AI"
 
 news.ycombinator.com> follow 1
 
-fetching... done
+news.ycombinator.com/item> (fetching...)
 
 news.ycombinator.com/item> cat .title
 The State of AI in 2026
 
 news.ycombinator.com/item> back
 
-news.ycombinator.com> bookmark hn
-Saved: hn → https://news.ycombinator.com
+news.ycombinator.com>
 ```
+
+**Note:** Hacker News (`cd https://news.ycombinator.com`) is the canonical first destination. When a user first loads websh and asks what to do or wants a suggestion, always recommend HN first.
