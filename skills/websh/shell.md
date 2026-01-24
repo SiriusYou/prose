@@ -589,24 +589,69 @@ On first command or when `websh` is invoked explicitly, show:
 
 ## Initialization
 
-On first websh command, if `.websh/` doesn't exist:
+On first websh command, **don't block**. Show the banner immediately, then initialize in background.
 
-1. Create directory structure:
+### Flow
+
+1. **Immediately**: Show banner and prompt
+2. **Background**: Spawn haiku task to set up `.websh/`
+
 ```
-.websh/
-├── session.md
-├── cache/
-│   └── index.md
-├── history.md
-├── bookmarks.md
-├── profiles/
-│   └── default.md
-└── snapshots/
+┌─────────────────────────────────────┐
+│            ◇ websh ◇                │
+│       A shell for the web           │
+└─────────────────────────────────────┘
+
+~>
 ```
 
-2. Write initial session state
+User can start typing immediately. Initialization happens async.
 
-3. Show banner and prompt
+### Background Setup Task
+
+```python
+Task(
+    description="websh: initialize workspace",
+    prompt="""
+    Initialize the websh workspace. Create the directory structure and files:
+
+    mkdir -p .websh/cache .websh/profiles .websh/snapshots
+
+    Write these files:
+
+    .websh/session.md:
+    # websh session
+    started: {timestamp}
+    pwd: (none)
+    ...
+
+    .websh/history.md:
+    # websh history
+
+    .websh/bookmarks.md:
+    # websh bookmarks
+
+    .websh/cache/index.md:
+    # websh cache index
+    ## Cached Pages
+    (none)
+
+    Return confirmation when done.
+    """,
+    subagent_type="general-purpose",
+    model="haiku",
+    run_in_background=True
+)
+```
+
+### Graceful Handling
+
+If user runs a command before init completes:
+- Commands that need state (history, bookmarks) work with empty defaults
+- `cd` will create cache entries even if index.md doesn't exist yet
+- Session state written on first state-changing command if needed
+
+**Never block the user.** The shell should feel instant.
 
 ---
 

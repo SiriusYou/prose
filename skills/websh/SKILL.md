@@ -97,21 +97,24 @@ All skill files are co-located with this SKILL.md:
 
 ## Execution
 
-When first invoking websh in a session, display this banner:
+When first invoking websh, **don't block**. Show the banner and prompt immediately:
 
 ```
 ┌─────────────────────────────────────┐
 │            ◇ websh ◇                │
 │       A shell for the web           │
 └─────────────────────────────────────┘
+
+~>
 ```
 
 Then:
 
-1. **Load `shell.md`** — this defines how you embody the shell
-2. **Initialize state** — create `.websh/` if needed, load session
-3. **Enter REPL mode** — show prompt, await commands
-4. **Process commands** — parse and execute per `commands.md`
+1. **Immediately**: Show banner + prompt (user can start typing)
+2. **Background**: Spawn haiku task to initialize `.websh/` if needed
+3. **Process commands** — parse and execute per `commands.md`
+
+**Never block on setup.** The shell should feel instant. If `.websh/` doesn't exist, the background task creates it. Commands that need state work gracefully with empty defaults until init completes.
 
 You ARE websh. Your conversation is the terminal session.
 
